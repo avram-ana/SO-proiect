@@ -61,27 +61,60 @@ void add_hunt(const char *id)  // argv: something like hunt001
       perror("Error opening binary file");
       exit(-1);
     }
-  // ------------------------------------------------------------------------------ some shit will happen here too
-  close(f);
+  
+  // get info using stdin:
+  
+  treasure_t new_treasure;
+  
+  printf("ID: ");
+  scanf("%d", &new_treasure.id);
+  printf("Name: ");
+  scanf("%s", new_treasure.nume);
+  printf("Latitude: ");
+  scanf("%f", &new_treasure.latitude);
+  printf("Longitude: ");
+  scanf("%f", &new_treasure.longitude);
+  printf("Treasure clue: ");
+  scanf("%s", new_treasure.clue);
+  printf("Treasure value: ");
+  scanf("%d", &new_treasure.value);
+
+  // write info in binary file:
+  if(write(f, &new_treasure, sizeof(new_treasure)) == -1)
+    {
+      perror("Error writing info in binary file");
+      exit(-1);
+    }
+  
+  close(f);  // done!!!
   //__________________________________
   // Create log file for the hunt
-  if((f = open(log_path, O_CREAT | O_WRONLY, 0644)) == -1)
+  if((f = open(log_path, O_CREAT | O_WRONLY | O_APPEND, 0644)) == -1)  // we are going to append every single operation that happened.
     {
       perror("Error opening log file");
       exit(-1);
     }
-  // ------------------------------------------------------------------------------ some shit might happen here
-  close(f);
+  // activity goes to the log:
+  const char *add_text = "Added ";
+  write(f, add_text, strlen(add_text));
+  write(f, id, strlen(id));
+  write(f, "\n", 1);
+  close(f);  // done with the log file
   //__________________________________
   // Create symbolic link for the log file
   if(symlink(log_path, log_symlink) == -1)
     {
+      // On success, zero is returned.  On error, -1 is returned.
       perror("Error creating symbolic link");
       exit(-1);
     }
   //__________________________________
 }
 
+void list_treasures()
+{
+  // does something
+}
 
 int main(int argc, char **argv)
 {
@@ -96,6 +129,12 @@ int main(int argc, char **argv)
     {
       add_hunt(argv[2]);
     }
+  
+  if(strcmp(argv[1], "--list") == 0)
+    {
+      list_treasures(argv[2]);
+    }
 
   return 0;
 }
+
