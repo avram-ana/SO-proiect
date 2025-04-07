@@ -36,7 +36,7 @@ void add_hunt(const char *id)  // argv: something like hunt001
   strcpy(log_symlink, "logged_hunt-");
   strcat(log_symlink, id);
   //__________________________________
-  // Create a new directory with the "path" name for the new hunt
+  // Create a new directory with the "path" name for the new hunt 
   if(stat(path, &st) == -1)  // does the directory exist?
     {
       if(errno == ENOENT)  // the directory doesn't exist | ENOENT - error no entry
