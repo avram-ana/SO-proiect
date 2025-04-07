@@ -11,12 +11,12 @@ struct stat st = {0};
 
 typedef struct treasure
 {
-  int id;
+  char id[50];
   char nume[50];
-  float latitude;
-  float longitude;
+  char latitude[50];
+  char longitude[50];
   char clue[100];
-  int value;
+  char value[50];
 }treasure_t;
 
 void add_hunt(const char *id)  // argv: something like hunt001
@@ -28,7 +28,7 @@ void add_hunt(const char *id)  // argv: something like hunt001
   strcpy(path, id);
 
   strcpy(binary_file, path);
-  strcat(binary_file, "/treasure.txt");
+  strcat(binary_file, "/treasure.bin");
 
   strcpy(log_path, path);
   strcat(log_path, "/logged_hunt");
@@ -55,7 +55,7 @@ void add_hunt(const char *id)  // argv: something like hunt001
     }
   //__________________________________
   // Create binary file named "binary_file"
-  if((f = open(binary_file, O_CREAT | O_WRONLY, 0644)) == -1)
+  if((f = open(binary_file, O_CREAT | O_WRONLY | O_APPEND, 0644)) == -1)
     {
       // 0644 - only owner can read & write, others can only read the file.
       perror("Error opening binary file");
@@ -67,24 +67,34 @@ void add_hunt(const char *id)  // argv: something like hunt001
   treasure_t new_treasure;
   
   printf("ID: ");
-  scanf("%d", &new_treasure.id);
+  scanf("%s", new_treasure.id);
+  strcat(new_treasure.id, " ");    // ,_, to signal end of string
   printf("Name: ");
   scanf("%s", new_treasure.nume);
+  strcat(new_treasure.nume, " ");
   printf("Latitude: ");
-  scanf("%f", &new_treasure.latitude);
+  scanf("%s", new_treasure.latitude);
+  strcat(new_treasure.latitude, " ");
   printf("Longitude: ");
-  scanf("%f", &new_treasure.longitude);
+  scanf("%s", new_treasure.longitude);
+  strcat(new_treasure.longitude, " ");
   printf("Treasure clue: ");
   scanf("%s", new_treasure.clue);
+  strcat(new_treasure.clue, " ");
   printf("Treasure value: ");
-  scanf("%d", &new_treasure.value);
+  scanf("%s", new_treasure.value);
+  strcat(new_treasure.value, " ");
 
+  int size = strlen(new_treasure.id) + strlen(new_treasure.nume) + strlen(new_treasure.latitude) + strlen(new_treasure.longitude) + strlen(new_treasure.clue) + strlen(new_treasure.value);
+  
   // write info in binary file:
-  if(write(f, &new_treasure, sizeof(new_treasure)) == -1)
-    {
-      perror("Error writing info in binary file");
-      exit(-1);
-    }
+
+  write(f, new_treasure.id, strlen(new_treasure.id));
+  write(f, new_treasure.nume, strlen(new_treasure.nume));
+  write(f, new_treasure.latitude, strlen(new_treasure.latitude));
+  write(f, new_treasure.longitude, strlen(new_treasure.longitude));
+  write(f, new_treasure.clue, strlen(new_treasure.clue));
+  write(f, new_treasure.value, strlen(new_treasure.value));
   
   close(f);  // done!!!
   //__________________________________
@@ -137,4 +147,3 @@ int main(int argc, char **argv)
 
   return 0;
 }
-
