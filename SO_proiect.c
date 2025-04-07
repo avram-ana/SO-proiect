@@ -84,8 +84,6 @@ void add_hunt(const char *id)  // argv: something like hunt001
   printf("Treasure value: ");
   scanf("%s", new_treasure.value);
   strcat(new_treasure.value, " ");
-
-  int size = strlen(new_treasure.id) + strlen(new_treasure.nume) + strlen(new_treasure.latitude) + strlen(new_treasure.longitude) + strlen(new_treasure.clue) + strlen(new_treasure.value);
   
   // write info in binary file:
 
@@ -97,6 +95,9 @@ void add_hunt(const char *id)  // argv: something like hunt001
   write(f, new_treasure.value, strlen(new_treasure.value));
   
   close(f);  // done!!!
+  //log_path
+  strcat(log_path, "Added treasure: ");
+  strcat(log_path, new_treasure.nume);
   //__________________________________
   // Create log file for the hunt
   if((f = open(log_path, O_CREAT | O_WRONLY | O_APPEND, 0644)) == -1)  // we are going to append every single operation that happened.
