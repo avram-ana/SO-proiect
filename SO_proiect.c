@@ -158,53 +158,58 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
   strcat(log_path, "/logged_hunt");
 
   //____________________________________________________________________
-  // open logs and search for previously-added treasures:
+  // open logs:
   if((f = open(log_path, O_RDWR | O_APPEND, 0644)) == -1)
     {
       perror("Error opening log file");
       exit(-1);
     }
-  
-  // navigate through the logs and see where a new_treasure was added + list it:
-  
-  while((nr_bytes = read(f, line, sizeof(line) - 1)) > 0) // while we can still navigate the logs:
+
+  //____________________________________________________________________
+  // open binary_file:
+  if((bin = open(binary_file, O_RDONLY, 0644)) == -1)
     {
-      flag = true;
-      line[nr_bytes] = '\0';  // line ends with "\0"
-      if(strstr(line, "Added treasure: "))  // found a treasure:
+      perror("Error opening binary file");
+      exit(-1);
+    }
+  
+  
+  //____________________________________________________________________
+  // navigate through the treasure.bin:
+  int count = 0;
+  while((nr_bytes = read(bin, line, sizeof(line))) > 0)
+    { 
+      for (int j = 0; j < nr_bytes; j++)
 	{
-	  char name[100];
-	  if(sscanf(line, "Added treasure: %99s", name) == 1)  // scan from line the binary_file name:
+	  if (line[j] == '\n')  // end of line
 	    {
-	      // find binary_file:
-	      strcpy(binary_file, id);
-	      strcat(binary_file, "/");
-	      strcat(binary_file, name);
-	      strcat(binary_file, ".bin");
+	      //line[i] = '\0';
+	      flag = true;
+
+      
+	      printf("\nTreasure %d: ", ++count);
+
+	      char *token= strtok(line, " ");  // ID
+	      printf("ID: %s | ", token);
+	      token = strtok(NULL, " ");  // NAME
+	      printf("Name: %s | ", token);
 	      
-	      // open binary_file:
-	      if((bin = open(binary_file, O_RDONLY)) == -1)
-		{
-		  perror("Error opening file in list_treasures() function");
-		  exit(-1);
-		}
+	      token = strtok(NULL, " ");  // LATITUDE
+	      printf("Latitude: %s | ", token);
 	      
-	      // read data from binary_file:
-	      treasure_t t;
-	      while(read(bin, &t, sizeof(t)) == sizeof(t))
-		{
-		  printf("Treasure ID: %s\n", t.id);
-		  printf("Name: %s\n", t.nume);
-		  printf("Latitude: %s\n", t.latitude);
-		  printf("Longitude: %s\n", t.longitude);
-		  printf("Clue: %s\n", t.clue);
-		  printf("Value: %s\n", t.value);
-		  printf("______________________\n");
-		}
-	      close(bin);
+	      token = strtok(NULL, " ");  // LONGITUDE
+	      printf("Longitude: %s | ", token);
+	      
+	      token = strtok(NULL, " ");  // CLUE
+	      printf("Clue: %s | ", token);
+	      
+	      token = strtok(NULL, "\n");  // VALUE
+	      printf("Value: %s\n\n", token);
 	    }
 	}
     }
+
+  
   //____________________________________________________________________
 
   
@@ -217,7 +222,6 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
 
   close(f);
 }
-
 
 
 
