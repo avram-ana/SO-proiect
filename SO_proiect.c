@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <time.h>
 
 #define MAX 500
 
@@ -21,6 +22,17 @@ typedef struct treasure
   char clue[100];
   char value[50];
 }treasure_t;
+
+long get_file_size(char *filename)
+{
+  struct stat file_status;
+  if (stat(filename, &file_status) < 0)
+    {
+      return -1;
+    }
+  
+  return file_status.st_size;
+}
 
 void add_hunt(const char *id)  // argv: something like hunt001
 {
@@ -143,9 +155,6 @@ void add_hunt(const char *id)  // argv: something like hunt001
   //__________________________________
 }
 
-
-
-
 void list_treasures(const char *id)  // list all the treasures in a certain hunt.
 {
   char path[200], binary_file[200], log_path[200], line[MAX];  // we consider 500 to be the max_letter_number/line in the log file.
@@ -160,6 +169,22 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
   strcat(log_path, "/logged_hunt");
 
   //____________________________________________________________________
+  // Binary file size:
+  printf("\nBinary file size: %ld\n", get_file_size(binary_file));
+  //____________________________________________________________________
+  // Date last modified:
+
+  struct stat attrib;
+  if (stat(binary_file, &attrib) == -1)
+    {
+      perror("stat");
+    }
+  
+  char date[100];
+  strftime(date, sizeof(date), "%d-%m-%Y %H:%M:%S", localtime(&attrib.st_mtime));
+  printf("Last modified: %s\n", date);
+  
+    //____________________________________________________________________
   // open logs:
   if((f = open(log_path, O_RDWR | O_APPEND, 0644)) == -1)
     {
@@ -174,6 +199,7 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
       perror("Error opening binary file");
       exit(-1);
     }
+
 
   //____________________________________________________________________
   // navigate through the treasure.bin:
@@ -225,8 +251,6 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
     }
 
   //____________________________________________________________________
-
-
   // we are going to append the "list treasures" OP.
   if(flag)  // there has been at least one treasure listed
     {
@@ -236,9 +260,6 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
 
   close(f);
 }
-
-
-
 
 int main(int argc, char **argv)
 {
