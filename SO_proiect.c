@@ -8,6 +8,8 @@
 #include <fcntl.h>
 #include <stdbool.h>
 
+#define MAX 500
+
 struct stat st = {0};
 
 typedef struct treasure
@@ -30,7 +32,7 @@ void add_hunt(const char *id)  // argv: something like hunt001
 
   strcpy(binary_file, path);
   strcat(binary_file, "/treasure.bin");
-  
+
   strcpy(log_path, path);
   strcat(log_path, "/logged_hunt");
 
@@ -41,18 +43,18 @@ void add_hunt(const char *id)  // argv: something like hunt001
   if(stat(path, &st) == -1)  // does the directory exist?
     {
       if(errno == ENOENT)  // the directory doesn't exist | ENOENT - error no entry
-	{
-	  if(mkdir(path, 0755) == -1)  // 0: no special settings | 7: rwx | 5: rx
-	    {
-	      perror("mkdir failed");
-	      exit(-1);
-	    }
-	}
+        {
+          if(mkdir(path, 0755) == -1)  // 0: no special settings | 7: rwx | 5: rx
+            {
+              perror("mkdir failed");
+              exit(-1);
+            }
+        }
       else
-	{
-	  perror("stat function failed");
-	  exit(-1);
-	}
+        {
+          perror("stat function failed");
+          exit(-1);
+        }
     }
   //__________________________________
   // Create binary file named "binary_file"
@@ -62,11 +64,11 @@ void add_hunt(const char *id)  // argv: something like hunt001
       perror("Error opening binary file");
       exit(-1);
     }
-  
+
   // get info using stdin:
-  
+
   treasure_t new_treasure;
-  
+
   printf("ID: ");
   scanf("%49s", new_treasure.id);
   strcat(new_treasure.id, " ");    // ,_, to signal end of string
@@ -85,7 +87,7 @@ void add_hunt(const char *id)  // argv: something like hunt001
   printf("Treasure value: ");
   scanf("%49s", new_treasure.value);
   strcat(new_treasure.value, " ");
-  
+
   // write info in binary file:
 
   write(f, new_treasure.id, strlen(new_treasure.id));
@@ -95,9 +97,9 @@ void add_hunt(const char *id)  // argv: something like hunt001
   write(f, new_treasure.clue, strlen(new_treasure.clue));
   write(f, new_treasure.value, strlen(new_treasure.value));
   write(f, "\n", 1);
-  
+
   close(f);  // done!!!
-  
+
   //__________________________________
   // Create log file for the hunt
   if((f = open(log_path, O_CREAT | O_WRONLY | O_APPEND, 0644)) == -1)  // we are going to append every single operation that happened.
@@ -123,21 +125,21 @@ void add_hunt(const char *id)  // argv: something like hunt001
   if (lstat(log_symlink, &link_stat) == -1)
     {
       if (errno == ENOENT)
-	{
-	  // symlink doesn't exist — safe to create it
-	  if (symlink(log_path, log_symlink) == -1)
-	    {
-	      perror("Error creating symbolic link");
-	      exit(EXIT_FAILURE);
-	    }
-	}
+        {
+          // symlink doesn't exist — safe to create it
+          if (symlink(log_path, log_symlink) == -1)
+            {
+              perror("Error creating symbolic link");
+              exit(EXIT_FAILURE);
+            }
+        }
       else
-	{
-	  perror("Error checking symbolic link");
-	  exit(EXIT_FAILURE);
-	}
+        {
+          perror("Error checking symbolic link");
+          exit(EXIT_FAILURE);
+        }
     }
-  
+
   //__________________________________
 }
 
@@ -146,10 +148,10 @@ void add_hunt(const char *id)  // argv: something like hunt001
 
 void list_treasures(const char *id)  // list all the treasures in a certain hunt.
 {
-  char path[200], binary_file[200], log_path[200], line[500];  // we consider 500 to be the max_letter_number/line in the log file.
+  char path[200], binary_file[200], log_path[200], line[MAX];  // we consider 500 to be the max_letter_number/line in the log file.
   int f, bin, nr_bytes;
   bool flag = false;  // were any treasures listed?
-  
+
   // file paths
   strcpy(path, id);
   strcpy(binary_file, path);
@@ -172,47 +174,59 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
       perror("Error opening binary file");
       exit(-1);
     }
-  
-  
+
   //____________________________________________________________________
   // navigate through the treasure.bin:
   int count = 0;
-  while((nr_bytes = read(bin, line, sizeof(line))) > 0)
-    { 
+  char buffer[MAX];
+  int i = 0;
+
+  while((nr_bytes = read(bin, buffer, sizeof(line))) > 0)
+    {
       for (int j = 0; j < nr_bytes; j++)
-	{
-	  if (line[j] == '\n')  // end of line
-	    {
-	      //line[i] = '\0';
-	      flag = true;
+        {
+          if (buffer[j] == '\n')  // end of line
+            {
+              line[i] = '\0';
+              i = 0; // reset for next line
+              flag = true;
 
-      
-	      printf("\nTreasure %d: ", ++count);
+              //printf("\n\nLine is: %s:\n\n ", line);
 
-	      char *token= strtok(line, " ");  // ID
-	      printf("ID: %s | ", token);
-	      token = strtok(NULL, " ");  // NAME
-	      printf("Name: %s | ", token);
-	      
-	      token = strtok(NULL, " ");  // LATITUDE
-	      printf("Latitude: %s | ", token);
-	      
-	      token = strtok(NULL, " ");  // LONGITUDE
-	      printf("Longitude: %s | ", token);
-	      
-	      token = strtok(NULL, " ");  // CLUE
-	      printf("Clue: %s | ", token);
-	      
-	      token = strtok(NULL, "\n");  // VALUE
-	      printf("Value: %s\n\n", token);
-	    }
-	}
+              printf("\nTreasure %d: ", ++count);
+
+              char *token= strtok(line, " ");  // ID
+              printf("ID: %s | ", token);
+              token = strtok(NULL, " ");  // NAME
+              printf("Name: %s | ", token);
+
+              token = strtok(NULL, " ");  // LATITUDE
+              printf("Latitude: %s | ", token);
+
+              token = strtok(NULL, " ");  // LONGITUDE
+              printf("Longitude: %s | ", token);
+
+              token = strtok(NULL, " ");  // CLUE
+              printf("Clue: %s | ", token);
+
+              token = strtok(NULL, "\n");  // VALUE
+              printf("Value: %s\n\n", token);
+
+            }
+            else
+              {
+                if (i < MAX - 1)
+                  {
+                    line[i++] = buffer[j];  // add to line what we have in buffer (char by char)
+                  }
+              }
+
+        }
     }
 
-  
   //____________________________________________________________________
 
-  
+
   // we are going to append the "list treasures" OP.
   if(flag)  // there has been at least one treasure listed
     {
@@ -239,10 +253,10 @@ int main(int argc, char **argv)
     {
       add_hunt(argv[2]);
     }
-  
+
   if(strcmp(argv[1], "--list") == 0)
     {
-      // argv[2] is currently the name of the directory. 
+      // argv[2] is currently the name of the directory.
       list_treasures(argv[2]);
     }
 
