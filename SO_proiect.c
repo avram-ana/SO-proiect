@@ -155,6 +155,10 @@ void add_hunt(const char *id)  // argv: something like hunt001
   //__________________________________
 }
 
+
+//______________________________________________________________________________________________
+
+
 void list_treasures(const char *id)  // list all the treasures in a certain hunt.
 {
   char path[200], binary_file[200], log_path[200], line[MAX];  // we consider 500 to be the max_letter_number/line in the log file.
@@ -261,12 +265,115 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
   close(f);
 }
 
+
+//______________________________________________________________________________________________
+
+void view_details(const char *hunt_id, const char *treasure_id)
+{
+  char path[200], binary_file[200], log_path[200], line[MAX];
+  int f, bin, nr_bytes;
+  bool flag = false;  // did we find the desired treasure?
+
+  // file paths
+  strcpy(path, hunt_id);
+  strcpy(binary_file, path);
+  strcat(binary_file, "/treasure.bin");
+  strcpy(log_path, path);
+  strcat(log_path, "/logged_hunt");
+
+  //____________________________________________________________________
+  // open logs:
+  if((f = open(log_path, O_RDWR | O_APPEND, 0644)) == -1)
+    {
+      perror("Error opening log file");
+      exit(-1);
+    }
+
+  //____________________________________________________________________
+  // open binary_file:
+  if((bin = open(binary_file, O_RDONLY, 0644)) == -1)
+    {
+      perror("Error opening binary file");
+      exit(-1);
+    }
+
+  //____________________________________________________________________
+  
+  char buffer[MAX];
+  int i = 0;
+  // navigate through treasure.bin:
+  while((nr_bytes = read(bin, buffer, sizeof(line))) > 0)
+    {
+      for (int j = 0; j < nr_bytes; j++)
+        {
+          if (buffer[j] == '\n')  // end of line
+            {
+	      line[i] = '\0';
+              i = 0; // reset for next line (might be needed or might be not)
+
+	      char *token = strtok(line, " ");  // current ID
+	      if(strcmp(token, treasure_id) == 0)  // we found the treasure we are looking for
+		{
+		  flag = true;
+		  printf("ID: %s | ", token);
+		  
+		  token = strtok(NULL, " ");  // NAME
+		  printf("Name: %s | ", token);
+		  
+		  token = strtok(NULL, " ");  // LATITUDE
+		  printf("Latitude: %s | ", token);
+		  
+		  token = strtok(NULL, " ");  // LONGITUDE
+		  printf("Longitude: %s | ", token);
+		  
+		  token = strtok(NULL, " ");  // CLUE
+		  printf("Clue: %s | ", token);
+		  
+		  token = strtok(NULL, "\n");  // VALUE
+		  printf("Value: %s\n\n", token);
+		  break;
+		}
+	      else
+		{
+		  continue;  // keep searching for the treasure
+		}
+	    }
+            else
+              {
+                if (i < MAX - 1)
+                  {
+                    line[i++] = buffer[j];  // add to line what we have in buffer (char by char)
+                  }
+              }
+
+        }
+      if(flag)
+	      {
+	        break;  // no need to keep the while going; break
+    	  }
+    }
+
+  if(!flag)
+    {
+      printf("Couldn't find treasure.\n");
+    }
+  else
+    {
+      const char *add_text = "Viewed a certain treasure.\n";
+      write(f, add_text, strlen(add_text));
+    }
+
+  close(f);
+}
+
+
 int main(int argc, char **argv)
 {
-  // ARGV : exe | OP | huntName
-  if(argc != 3)
+  // ARGV : exe | OP | huntName | treasureID (optional)
+  if(argc < 3)
     {
-      printf("argc != 3\n");
+      printf("Argc should be 3 or 4, depending on the desired function.\n");
+      printf("add - 3 | list - 3 | view - 4\n");
       exit(-1);
     }
 
@@ -274,12 +381,20 @@ int main(int argc, char **argv)
     {
       add_hunt(argv[2]);
     }
-
-  if(strcmp(argv[1], "--list") == 0)
+  else if(strcmp(argv[1], "--list") == 0)
     {
-      // argv[2] is currently the name of the directory.
       list_treasures(argv[2]);
     }
-
+  else if(strcmp(argv[1], "--view") == 0 && argc == 4)
+    {
+      if(argc == 4)
+	view_details(argv[2], argv[3]);
+      else
+	{
+	  printf("For this you need argv[4].\n");
+	  exit(-1);
+	}
+    }
+  
   return 0;
 }
