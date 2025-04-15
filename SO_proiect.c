@@ -45,9 +45,8 @@ void remove_dir(const char *hunt_name)
   struct stat st;
   if(stat(hunt_name, &st) == -1 || !S_ISDIR(st.st_mode))  // S_ISDIR - checks whether it's a dir or not
     {
-      const char *msg = "Error: Hunt directory doesn't exist.\n";
-      write(STDOUT_FILENO, msg, strlen(msg));
-      return;
+      printf("Error: Hunt directory doesn't exist.\n");
+      exit(-1);
     }
 
   if(!(dir = opendir(hunt_name)))
