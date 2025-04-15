@@ -35,69 +35,7 @@ long get_file_size(char *filename)
   return file_status.st_size;
 }
 
-void remove_dir(const char *hunt_name)
-{
-  DIR *dir;
-  struct dirent *entry;
-  char full_path[200];
-
-  // does the directory exist?
-  struct stat st;
-  if(stat(hunt_name, &st) == -1 || !S_ISDIR(st.st_mode))  // S_ISDIR - checks whether it's a dir or not
-    {
-      printf("Error: Hunt directory doesn't exist.\n");
-      exit(-1);
-    }
-
-  if(!(dir = opendir(hunt_name)))
-    {
-      perror("Error: Could not open hunt directory");
-      exit(-1);
-    }
-
-  // create path for symlink:
-  char log_symlink[200];
-  strcpy(log_symlink, "logged_hunt-");
-  strcat(log_symlink, hunt_name);
-
-  // remove symbolic link:
-  if(lstat(log_symlink, &st) == 0 && S_ISLNK(st.st_mode))
-    {
-      if(unlink(log_symlink) != 0)  // unlink "unlinks" the dir before deleting (remove symlink)
-        {
-	  perror("Error removing symbolic link");
-	  exit(-1);
-        }
-    }
-  
-  // remove the content from given dir
-  while((entry = readdir(dir)) != NULL)
-    {
-      if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-        continue;
-
-      strcpy(full_path, hunt_name);
-      strcat(full_path, "/");
-      strcat(full_path, entry->d_name);
-
-      if(remove(full_path) != 0)
-        {
-          printf("Couldn't remove a file.\n");
-	  exit(-1);
-        }
-    }
-
-  closedir(dir);
-
-  // remove the given dir
-  if(remove(hunt_name) != 0)
-    {
-      printf("Error removing given dir.\n");
-      exit(-1);
-    }
-}
-
-
+//______________________________________________________________________________________________
 
 void add_hunt(const char *id)  // argv: something like hunt001
 {
@@ -453,12 +391,280 @@ void view_details(const char *hunt_id, const char *treasure_id)
   else
     {
       const char *add_text = "Viewed a certain treasure.\n";
-      write(f, add_text, strlen(add_text));
+      if(write(f, add_text, strlen(add_text)) == -1)
+	{
+	  perror("Error writing in log the view_treasure action");
+	  exit(-1);
+	}
     }
 
   close(f);
 }
 
+//______________________________________________________________________________________________
+
+void remove_dir(const char *hunt_name)
+{
+  DIR *dir;
+  struct dirent *entry;
+  char full_path[200];
+
+  // does the directory exist?
+  struct stat st;
+  if(stat(hunt_name, &st) == -1 || !S_ISDIR(st.st_mode))  // S_ISDIR - checks whether it's a dir or not
+    {
+      printf("Error: Hunt directory doesn't exist.\n");
+      exit(-1);
+    }
+
+  if(!(dir = opendir(hunt_name)))
+    {
+      perror("Error: Could not open hunt directory");
+      exit(-1);
+    }
+
+  // create path for symlink:
+  char log_symlink[200];
+  strcpy(log_symlink, "logged_hunt-");
+  strcat(log_symlink, hunt_name);
+
+  // remove symbolic link:
+  if(lstat(log_symlink, &st) == 0 && S_ISLNK(st.st_mode))
+    {
+      if(unlink(log_symlink) != 0)  // unlink "unlinks" the dir before deleting (remove symlink)
+        {
+	  perror("Error removing symbolic link");
+	  exit(-1);
+        }
+    }
+  
+  // remove the content from given dir
+  while((entry = readdir(dir)) != NULL)
+    {
+      if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        continue;
+
+      strcpy(full_path, hunt_name);
+      strcat(full_path, "/");
+      strcat(full_path, entry->d_name);
+
+      if(remove(full_path) != 0)
+        {
+          printf("Couldn't remove a file.\n");
+	  exit(-1);
+        }
+    }
+
+  closedir(dir);
+
+  // remove the given dir
+  if(remove(hunt_name) != 0)
+    {
+      printf("Error removing given dir.\n");
+      exit(-1);
+    }
+}
+
+//______________________________________________________________________________________________
+
+void remove_treasure(const char *hunt, const char *treasure_id)
+{
+  char binary_file[200], log_path[200], temp_file[200];
+  char line[MAX];
+  bool flag = false;  // did we find the treasure we are looking for?
+  int nr_bytes, i = 0, f, bin, temp;
+
+  // create binary_file path:
+  strcpy(binary_file, hunt);
+  strcat(binary_file, "/treasure.bin");
+  // create log path:
+  strcpy(log_path, hunt);
+  strcat(log_path, "/logged_hunt");
+  // create path for the temporary binary file:
+  strcpy(temp_file, hunt);
+  strcat(temp_file, "/temp_treasure.bin");
+
+  //____________________________________________________________________
+  // open logs:
+  if((f = open(log_path, O_RDWR | O_APPEND, 0644)) == -1)
+    {
+      perror("Error opening log file");
+      exit(-1);
+    }
+
+  //____________________________________________________________________
+  // open binary_file:
+  if((bin = open(binary_file, O_RDONLY, 0644)) == -1)
+    {
+      perror("Error opening binary file");
+      exit(-1);
+    }
+
+  //____________________________________________________________________
+
+  
+  if(get_file_size(binary_file) == 0)  // there are no treasures
+    {
+      printf("There are no treasures in binary_file.\n");
+      close(bin);
+      close(f);
+      return;
+    }
+
+  //____________________________________________________________________
+  // open temp file:
+  if((temp = open(temp_file, O_WRONLY | O_CREAT | O_TRUNC, 0644)) == -1)
+    {
+      perror("Couldn't open file temp_treasure.bin");
+      close(f);
+      close(bin);
+      exit(-1);
+    }
+
+  // navigate through binary_file in search for the desired treasure:
+  char buffer[MAX];
+  while((nr_bytes = read(bin, buffer, sizeof(line))) > 0)
+    {
+      for(int j = 0; j < nr_bytes; j++)
+	{
+	  if(buffer[j] == '\n')  // end of line
+	    {
+	      line[i] = '\0';
+	      i = 0;  // reset for next line
+	      char temp_line[500];
+	      strcpy(temp_line, line);
+	      char *token = strtok(line, " ");  // get the current id
+	      if(strcmp(token, treasure_id) != 0)  // while we DON'T find the treasure, just copy the other treasures in the temp binary file:
+		{
+		  if(write(temp, token, strlen(token)) == -1)
+		    {
+		      perror("Error writing in temp_file");
+		      exit(-1);
+		    }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		
+		  token = strtok(NULL, " ");  // NAME
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		  
+		  token = strtok(NULL, " ");  // LATITUDE
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		  
+		  token = strtok(NULL, " ");  // LONGITUDE
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		  
+		  token = strtok(NULL, " ");  // CLUE
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		  
+		  token = strtok(NULL, "\n");  // VALUE
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+
+		  if(write(temp, "\n", 1) == -1)
+		    {
+		      perror("Couldn't write backslash n in temop_file");
+		      exit(-1);
+		    }
+		}
+	      else  // found the treasure we want to remove
+		{
+		  flag = true;
+		}
+	    }
+	  else
+	    {
+	      line[i++] = buffer[j];
+	    }
+	}
+    }
+
+  // close files:
+  close(bin);
+  close(temp);
+  
+  if(!flag)
+    {
+      printf("The treasure with ID %s not found in %s.\n", treasure_id, hunt);
+      unlink(temp_file);  // remove
+      return;
+    }
+
+  if(remove(binary_file) != 0)
+    {
+      perror("Couldn't remove binary_file in remove_treasure function");
+      exit(-1);
+    }
+
+  if(rename(temp_file, binary_file) != 0)  // rename temp file (this will become the original one)
+    {
+      perror("Couldn't name temp file like  original");
+      exit(-1);
+    }
+
+  if(get_file_size(binary_file) == 0)  // we just removed the last treasure
+    {
+      remove_dir(hunt);
+    }
+  else  // append to log the action:
+    {
+      char add_text[500];
+      strcpy(add_text, "Removed treasure with ID ");
+      strcat(add_text, treasure_id);
+      strcat(add_text, "\n");
+
+      if(write(f, add_text, strlen(add_text)) == -1)
+	{
+	  perror("Couldn't write into log file the remove_treasure action");
+	  close(f);
+	  exit(-1);
+	}
+    }
+  close(f);
+}
+
+//______________________________________________________________________________________________
 
 int main(int argc, char **argv)
 {
@@ -478,7 +684,7 @@ int main(int argc, char **argv)
     {
       list_treasures(argv[2]);
     }
-  else if(strcmp(argv[1], "--view") == 0 && argc == 4)
+  else if(strcmp(argv[1], "--view") == 0)
     {
       if(argc == 4)
 	view_details(argv[2], argv[3]);
@@ -488,9 +694,24 @@ int main(int argc, char **argv)
 	  exit(-1);
 	}
     }
-  else if(strcmp(argv[1], "--removeDir") == 0)
+  else if(strcmp(argv[1], "--remove_hunt") == 0)
     {
       remove_dir(argv[2]);
+    }
+  else if(strcmp(argv[1], "--remove_treasure") == 0)
+    {
+      if(argc == 4)
+	{
+	  remove_treasure(argv[2], argv[3]);
+	}
+      else
+	{
+	  printf("This function requires argc = 4.\n");
+	}
+    }
+  else
+    {
+      printf("The requested function is unknown.\n");
     }
   
   return 0;
