@@ -1,3 +1,4 @@
+SO - Sisteme de Operare
                 Phase One:
         - add_hunt (... or add a treasure in a hunt that already exists)
         - list_treasures (if there are any in the given hunt) 
