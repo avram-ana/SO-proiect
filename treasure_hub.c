@@ -12,7 +12,7 @@ void print_details(void)
 {
   printf("\n___TREASURE HUB COMMANDS___\n\n");
   printf("- start_monitor  // starts a separate background process\n");
-  printf("- list_hunts  // asks the monitor to list the hunts and the total number of treasures in each\n");  // not implemented yet!!!!!!!!!!!!!!!!!!!!!!
+  printf("- list_hunts  // asks the monitor to list the hunts and the total number of treasures in each\n");
   printf("- list_treasures  // tells the monitor to show the information about all treasures in a hunt\n");
   printf("- view_treasure  // tells the monitor to show the information about a treasure in hunt\n");
   printf("- stop_monitor  // asks the monitor to end then returns to the prompt\n");
@@ -113,7 +113,7 @@ void execute_list_treasures(void)
     }
 }
 
-void execute_view_treasure()
+void execute_view_treasure(void)
 {
   char hunt_id[20];
   printf("[hub] Enter the ID for the desired hunt: ");
@@ -137,6 +137,17 @@ void execute_view_treasure()
   // -- view requires 4 args: exe, "--view", hunt, treasure_ID
   snprintf(command, sizeof(command), "./treasure_manager --view %s %s", hunt_id, id);
 
+  if(system(command) == -1)
+    {
+      perror("Error executing treasure_manager");
+      exit(-1);
+    }
+}
+
+void execute_list_hunts(void)  // implemented in "treasure_manager.c"
+{
+  // --list_hunts requires only 2 args, exe and "--list":
+  char command[] = "./treasure_manager --list_hunts";
   if(system(command) == -1)
     {
       perror("Error executing treasure_manager");
@@ -168,6 +179,17 @@ void process_command(const char *input)
 	  printf("[hub] cannot execute command, no monitor running.\n");
         }
     }
+  else if(strcmp(input, "list_hunts") == 0)
+    {
+      if(monitor_pid != -1 && monitor_stopped == 0)
+        {
+	  execute_list_hunts();
+        }
+      else
+        {
+	  printf("[hub] cannot execute command, no monitor running.\n");
+        }
+    }
   else if(strcmp(input, "start_monitor") == 0)
     {
       start_monitor();
@@ -190,6 +212,8 @@ void process_command(const char *input)
 int main(void)
 {
   print_details();
+
+  // the list_hunts function is implemented in "treasure_manager.c".
   
   struct sigaction sa;
   sa.sa_handler = sigchild_handler;
@@ -215,7 +239,7 @@ int main(void)
 	  break;
         }
       
-      input[strcspn(input, "\n")] = 0; // Remove newline character
+      input[strcspn(input, "\n")] = 0; // remove newline character
       
       // Process command:
       process_command(input);
