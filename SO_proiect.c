@@ -293,6 +293,7 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
       write(f, add_text, strlen(add_text));
     }
 
+  printf("Number of treasures: %d\n", count);
   close(f);
 }
 
@@ -553,7 +554,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 		    perror("Error writing in temp_file");
 		    exit(-1);
 		  }
-		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		  if(write(temp, " ", 1) == -1)
 		    {
 		      perror("Couldn't write space in temp");
 		      exit(-1);
@@ -565,7 +566,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 		    perror("Error writing in temp_file");
 		    exit(-1);
 		  }
-		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		  if(write(temp, " ", 1) == -1)
 		    {
 		      perror("Couldn't write space in temp");
 		      exit(-1);
@@ -577,7 +578,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 		    perror("Error writing in temp_file");
 		    exit(-1);
 		  }
-		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		  if(write(temp, " ", 1) == -1)
 		    {
 		      perror("Couldn't write space in temp");
 		      exit(-1);
@@ -589,7 +590,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 		    perror("Error writing in temp_file");
 		    exit(-1);
 		  }
-		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		  if(write(temp, " ", 1) == -1)
 		    {
 		      perror("Couldn't write space in temp");
 		      exit(-1);
