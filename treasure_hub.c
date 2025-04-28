@@ -10,11 +10,11 @@ int monitor_stopped = 1;  // 1 - monitor is stopped | 0 - monitor running
 
 void print_details(void)
 {
-  printf("\n___TREASURE HUB COMMANDS___\n");
+  printf("\n___TREASURE HUB COMMANDS___\n\n");
   printf("- start_monitor  // starts a separate background process\n");
   printf("- list_hunts  // asks the monitor to list the hunts and the total number of treasures in each\n");  // not implemented yet!!!!!!!!!!!!!!!!!!!!!!
   printf("- list_treasures  // tells the monitor to show the information about all treasures in a hunt\n");
-  printf("- view_treasure  // tells the monitor to show the information about a treasure in hunt\n");  // not implemented yet!!!!!!!!!!!!!
+  printf("- view_treasure  // tells the monitor to show the information about a treasure in hunt\n");
   printf("- stop_monitor  // asks the monitor to end then returns to the prompt\n");
   printf("- exit  // if the monitor still runs, prints an error message, otherwise ends the program\n\n");
 }
@@ -49,7 +49,6 @@ void start_monitor(void)
     }
 
   // else, actually start the monitor:
-
   //create a child process
   pid_t pid = fork();
   if(pid == -1)
@@ -94,7 +93,11 @@ void execute_list_treasures(void)
 {
   char hunt_id[20];
   printf("[hub] Enter the ID for the desired hunt: ");
-  fgets(hunt_id, sizeof(hunt_id), stdin);
+  if(!fgets(hunt_id, sizeof(hunt_id), stdin))
+    {
+      perror("Error reading hunt_id for list_treasures function");
+      exit(-1);
+    }
   hunt_id[strcspn(hunt_id, "\n")] = 0;  // Remove the newline character
   
   char command[300];
@@ -110,6 +113,37 @@ void execute_list_treasures(void)
     }
 }
 
+void execute_view_treasure()
+{
+  char hunt_id[20];
+  printf("[hub] Enter the ID for the desired hunt: ");
+  if(!fgets(hunt_id, sizeof(hunt_id), stdin))
+    {
+      perror("Error reading hunt_id for view_treasure function");
+      exit(-1);
+    }
+  hunt_id[strcspn(hunt_id, "\n")] = 0;  // Remove the newline character
+
+  // why did I choose char for ID? because it's defined the same way in "treasure_manager.c". easier to work with
+  char id[50];
+  printf("[hub] Enter treasure ID: ");
+  if(!fgets(id, sizeof(id), stdin))
+    {
+      perror("Error reading ID for view_treasure function");
+      exit(-1);
+    }
+
+  char command[300];
+  // -- view requires 4 args: exe, "--view", hunt, treasure_ID
+  snprintf(command, sizeof(command), "./treasure_manager --view %s %s", hunt_id, id);
+
+  if(system(command) == -1)
+    {
+      perror("Error executing treasure_manager");
+      exit(-1);
+    }
+}
+
 void process_command(const char *input)
 {
   if(strcmp(input, "list_treasures") == 0)
@@ -117,6 +151,17 @@ void process_command(const char *input)
       if(monitor_pid != -1 && monitor_stopped == 0)
         {
 	  execute_list_treasures();
+        }
+      else
+        {
+	  printf("[hub] cannot execute command, no monitor running.\n");
+        }
+    }
+  else if(strcmp(input, "view_treasure") == 0)
+    {
+      if(monitor_pid != -1 && monitor_stopped == 0)
+        {
+	  execute_view_treasure();
         }
       else
         {
@@ -170,8 +215,9 @@ int main(void)
 	  break;
         }
       
-      input[strcspn(input, "\n")] = 0; // remove newline character
+      input[strcspn(input, "\n")] = 0; // Remove newline character
       
+      // Process command:
       process_command(input);
     }
   
