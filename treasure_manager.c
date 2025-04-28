@@ -293,7 +293,6 @@ void list_treasures(const char *id)  // list all the treasures in a certain hunt
       write(f, add_text, strlen(add_text));
     }
 
-  printf("Number of treasures: %d\n", count);
   close(f);
 }
 
@@ -554,7 +553,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 		    perror("Error writing in temp_file");
 		    exit(-1);
 		  }
-		  if(write(temp, " ", 1) == -1)
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
 		    {
 		      perror("Couldn't write space in temp");
 		      exit(-1);
@@ -566,7 +565,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 		    perror("Error writing in temp_file");
 		    exit(-1);
 		  }
-		  if(write(temp, " ", 1) == -1)
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
 		    {
 		      perror("Couldn't write space in temp");
 		      exit(-1);
@@ -578,7 +577,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 		    perror("Error writing in temp_file");
 		    exit(-1);
 		  }
-		  if(write(temp, " ", 1) == -1)
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
 		    {
 		      perror("Couldn't write space in temp");
 		      exit(-1);
@@ -590,7 +589,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 		    perror("Error writing in temp_file");
 		    exit(-1);
 		  }
-		  if(write(temp, " ", 1) == -1)
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
 		    {
 		      perror("Couldn't write space in temp");
 		      exit(-1);
@@ -667,47 +666,131 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 
 //______________________________________________________________________________________________
 
-int main(int argc, char **argv)
+// list all the hunts in the current dir:
+void list_hunts(void)
 {
-  // ARGV : exe | OP | huntName | treasureID (optional)
-  if(argc < 3)
+  // number of dirs in current dir = number of hunts
+  // get number of hunts + print the name for each:
+  DIR *dir = opendir(".");
+  if(!dir)
     {
-      printf("Argc should be 3 or 4, depending on the desired function.\n");
-      printf("add - 3 | list - 3 | view - 4\n");
+      perror("Couldn't open directory");
       exit(-1);
     }
 
-  if(strcmp(argv[1], "--add") == 0)
+  struct dirent *entry;
+  int count = 0;
+
+  // search for hunts:
+  while((entry = readdir(dir)))
     {
-      add_hunt(argv[2]);
+      struct stat st;
+      if(stat(entry->d_name, &st) == -1)
+	{
+	  perror("Error - stat function");
+	  continue;
+	}
+
+      // found a directory
+      if(S_ISDIR(st.st_mode))
+	{
+	  // check that the directory is NOT ".", ".." or ".git". if it is, then skip:
+	  if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, ".git") == 0)
+	    {
+	      continue;
+	    }
+	  	  
+	  printf("\n%s", entry->d_name);
+	  count++;
+	}
     }
-  else if(strcmp(argv[1], "--list") == 0)
+  closedir(dir);
+  
+  if(count == 0)
     {
-      list_treasures(argv[2]);
+      printf("There are no hunts.\n");
     }
-  else if(strcmp(argv[1], "--view") == 0)
+  else
     {
-      if(argc == 4)
+      printf("\nTotal number of hunts: %d\n", count);
+    }
+}
+//______________________________________________________________________________________________
+
+int main(int argc, char **argv)
+{
+  // ARGV : exe | OP | huntName | treasureID (optional)
+  // IF there are more argc than needed, the code will run using only the ones it needs.
+  if(argc < 2)
+    {
+      printf("Argc should be 2, 3 or 4, depending on the desired function.\n");
+      printf("add - 3 | list - 3 | view - 4 | remove_treasure - 4 | remove_hunt - 3 | list_hunts - 2\n");
+      exit(-1);
+    }
+
+  if(strcmp(argv[1], "--add") == 0)  // argc = 3
+    {
+      if(argc > 2)
+	{
+	  add_hunt(argv[2]);
+	}
+      else
+	{
+	  printf("This function requires argc = 3.\n");
+	}
+    }
+  else if(strcmp(argv[1], "--list") == 0)  // argc = 3
+    {
+      if(argc >2)
+	{
+	  list_treasures(argv[2]);
+	}
+      else
+	{
+	  printf("This function requires argc = 3.\n");
+	}
+    }
+  else if(strcmp(argv[1], "--view") == 0)  // argc = 4
+    {
+      if(argc > 3)
 	view_details(argv[2], argv[3]);
       else
 	{
-	  printf("For this you need argv[4].\n");
+	  printf("This function requires argc = 4.\n");
 	  exit(-1);
 	}
     }
-  else if(strcmp(argv[1], "--remove_hunt") == 0)
+  else if(strcmp(argv[1], "--remove_hunt") == 0)  // argc = 3
     {
-      remove_dir(argv[2]);
+      if(argc > 2)
+	{
+	  remove_dir(argv[2]);
+	}
+      else
+	{
+	  printf("This function requires argc = 3.\n");
+	}
     }
-  else if(strcmp(argv[1], "--remove_treasure") == 0)
+  else if(strcmp(argv[1], "--remove_treasure") == 0)  // argc = 4
     {
-      if(argc == 4)
+      if(argc > 3)
 	{
 	  remove_treasure(argv[2], argv[3]);
 	}
       else
 	{
 	  printf("This function requires argc = 4.\n");
+	}
+    }
+  else if(strcmp(argv[1], "--list_hunts") == 0)
+    {
+      if(argc > 1)
+	{
+	  list_hunts();
+	}
+      else
+	{
+	  printf("This function requires argc = 2.\n");
 	}
     }
   else
