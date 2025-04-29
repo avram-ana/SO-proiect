@@ -1,248 +1,842 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <sys/wait.h>
-#include <signal.h>
+#include <fcntl.h>
+#include <stdbool.h>
+#include <time.h>
+#include <dirent.h>
 
-pid_t monitor_pid = -1;
-int monitor_stopped = 1;  // 1 - monitor is stopped | 0 - monitor running
+#define MAX 500
 
-void print_details(void)
+struct stat st = {0};
+
+typedef struct treasure
 {
-  printf("\n___TREASURE HUB COMMANDS___\n\n");
-  printf("- start_monitor  // starts a separate background process\n");
-  printf("- list_hunts  // asks the monitor to list the hunts and the total number of treasures in each\n");
-  printf("- list_treasures  // tells the monitor to show the information about all treasures in a hunt\n");
-  printf("- view_treasure  // tells the monitor to show the information about a treasure in hunt\n");
-  printf("- stop_monitor  // asks the monitor to end then returns to the prompt\n");
-  printf("- exit  // if the monitor still runs, prints an error message, otherwise ends the program\n\n");
-}
-
-void sigchild_handler(int sig)
-{
-  // handles the end of the monitor process
-  // (or child process) and updates the status.
-  (void)sig;
-  int status;
-  pid_t pid;
-  
-  while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
-    {
-      if (pid == monitor_pid)
-        {
-	  printf("[hub] monitor terminated with status %d\n", WEXITSTATUS(status));
-	  // change status to "stopped monitor":
-	  monitor_pid = -1;
-	  monitor_stopped = 1;
-        }
-    }
-}
-
-void start_monitor(void)
-{
-  // if the monitor is already running we stop:
-  if (monitor_pid != -1)
-    {
-      printf("[hub] Monitor is already running with PID %d.\n", monitor_pid);
-      return;
-    }
-
-  // else, actually start the monitor:
-  //create a child process
-  pid_t pid = fork();
-  if(pid == -1)
-    {
-      perror("Error with the fork");
-      exit(-1);
-    }
-  else if(pid == 0)  // we are inside the child process:
-    {
-      while(1)
-        {
-	  pause();  // the process waits for signals
-        }
-    }
-  else  // we are inside the parent process:
-    {
-      monitor_pid = pid;
-      // set status to "monitor running":
-      monitor_stopped = 0;
-      printf("[hub] Monitor started with PID %d.\n", pid);
-    }
-}
-
-void stop_monitor(void)
-{
-  // can't stop a "stopped" monitor
-  if (monitor_pid == -1 || monitor_stopped == 1)
-    {
-      printf("[hub] No monitor running.\n");
-      return;
-    }
-  // send  kill signal to stop monitor:
-  kill(monitor_pid, SIGKILL);
-
-  // change status:
-  monitor_stopped = 1;
-  monitor_pid = -1;
-  printf("[hub] Monitor stopped.\n");
-}
-
-void execute_list_treasures(void)
-{
-  char hunt_id[20];
-  printf("[hub] Enter the ID for the desired hunt: ");
-  if(!fgets(hunt_id, sizeof(hunt_id), stdin))
-    {
-      perror("Error reading hunt_id for list_treasures function");
-      exit(-1);
-    }
-  hunt_id[strcspn(hunt_id, "\n")] = 0;  // Remove the newline character
-  
-  char command[300];
-  // treasure_manager.c requires strict args: --list for this function and the ID for the desired hunt:
-  snprintf(command, sizeof(command), "./treasure_manager --list %s", hunt_id);
-
-  // system - if a child process could not be created, or its status could not be retrieved,
-  // the return value is -1 and errno is set to indicate the error.
-  if (system(command) == -1)
-    {
-      perror("Error executing treasure_manager");
-      exit(-1);
-    }
-}
-
-void execute_view_treasure(void)
-{
-  char hunt_id[20];
-  printf("[hub] Enter the ID for the desired hunt: ");
-  if(!fgets(hunt_id, sizeof(hunt_id), stdin))
-    {
-      perror("Error reading hunt_id for view_treasure function");
-      exit(-1);
-    }
-  hunt_id[strcspn(hunt_id, "\n")] = 0;  // Remove the newline character
-
-  // why did I choose char for ID? because it's defined the same way in "treasure_manager.c". easier to work with
   char id[50];
-  printf("[hub] Enter treasure ID: ");
-  if(!fgets(id, sizeof(id), stdin))
-    {
-      perror("Error reading ID for view_treasure function");
-      exit(-1);
-    }
+  char nume[50];
+  char latitude[50];
+  char longitude[50];
+  char clue[100];
+  char value[50];
+}treasure_t;
 
-  char command[300];
-  // -- view requires 4 args: exe, "--view", hunt, treasure_ID
-  snprintf(command, sizeof(command), "./treasure_manager --view %s %s", hunt_id, id);
-
-  if(system(command) == -1)
+long get_file_size(char *filename)
+{
+  struct stat file_status;
+  if (stat(filename, &file_status) < 0)
     {
-      perror("Error executing treasure_manager");
-      exit(-1);
+      return -1;
     }
+  
+  return file_status.st_size;
 }
 
-void execute_list_hunts(void)  // implemented in "treasure_manager.c"
+//______________________________________________________________________________________________
+
+void add_hunt(const char *id)  // argv: something like hunt001
 {
-  // --list_hunts requires only 2 args, exe and "--list":
-  char command[] = "./treasure_manager --list_hunts";
-  if(system(command) == -1)
+  char path[200], binary_file[200], log_path[200], log_symlink[200];
+  int f;
+
+  // create names for each directory or path
+  strcpy(path, id);
+
+  strcpy(binary_file, path);
+  strcat(binary_file, "/treasure.bin");
+
+  strcpy(log_path, path);
+  strcat(log_path, "/logged_hunt");
+
+  strcpy(log_symlink, "logged_hunt-");
+  strcat(log_symlink, id);
+  //__________________________________
+  // Create a new directory with the "path" name for the new hunt
+  if(stat(path, &st) == -1)  // does the directory exist?
     {
-      perror("Error executing treasure_manager");
+      if(errno == ENOENT)  // the directory doesn't exist | ENOENT - error no entry
+        {
+          if(mkdir(path, 0755) == -1)  // 0: no special settings | 7: rwx | 5: rx
+            {
+              perror("mkdir failed");
+              exit(-1);
+            }
+        }
+      else
+        {
+          perror("stat function failed");
+          exit(-1);
+        }
+    }
+  //__________________________________
+  // Create binary file named "binary_file"
+  if((f = open(binary_file, O_CREAT | O_WRONLY | O_APPEND, 0644)) == -1)
+    {
+      // 0644 - only owner can read & write, others can only read the file.
+      perror("Error opening binary file");
       exit(-1);
     }
+
+  // get info using stdin:
+
+  treasure_t new_treasure;
+
+  printf("ID: ");
+  scanf("%49s", new_treasure.id);
+  strcat(new_treasure.id, " ");    // ,_, to signal end of string
+  printf("Name: ");
+  scanf("%49s", new_treasure.nume);
+  strcat(new_treasure.nume, " ");
+  printf("Latitude: ");
+  scanf("%49s", new_treasure.latitude);
+  strcat(new_treasure.latitude, " ");
+  printf("Longitude: ");
+  scanf("%49s", new_treasure.longitude);
+  strcat(new_treasure.longitude, " ");
+  printf("Treasure clue: ");
+  scanf("%99s", new_treasure.clue);
+  strcat(new_treasure.clue, " ");
+  printf("Treasure value: ");
+  scanf("%49s", new_treasure.value);
+  strcat(new_treasure.value, " ");
+
+  // write info in binary file:
+
+  if(write(f, new_treasure.id, strlen(new_treasure.id)) == -1)
+    {
+      perror("Error writing ID in new binary_file");
+      exit(-1);
+    }
+  if(write(f, new_treasure.nume, strlen(new_treasure.nume)) == -1)
+    {
+      perror("Error writing name in new binary_file");
+      exit(-1);
+    }
+  if(write(f, new_treasure.latitude, strlen(new_treasure.latitude)) == -1)
+    {
+      perror("Error writing latitude in new binary_file");
+      exit(-1);
+    }
+  if(write(f, new_treasure.longitude, strlen(new_treasure.longitude)) == -1)
+    {
+      perror("Error writing longitude in new binary_file");
+      exit(-1);
+    }
+  if(write(f, new_treasure.clue, strlen(new_treasure.clue)) == -1)
+    {
+      perror("Error writing clue in new binary_file");
+      exit(-1);
+    }
+  if(write(f, new_treasure.value, strlen(new_treasure.value)) == -1)
+    {
+      perror("Error writing value in new binary_file");
+      exit(-1);
+    }
+  if(write(f, "\n", 1) == -1)
+    {
+      perror("Error writing *backslash n* in new binary_file");
+      exit(-1);
+    }
+      
+  close(f);  // done!!!
+
+  //__________________________________
+  // Create log file for the hunt
+  if((f = open(log_path, O_CREAT | O_WRONLY | O_APPEND, 0644)) == -1)  // we are going to append every single operation that happened.
+    {
+      perror("Error opening log file");
+      exit(-1);
+    }
+  // activity goes to the log:
+  const char *add_text = "Added in ";
+  write(f, add_text, strlen(add_text));
+  write(f, id, strlen(id));
+  write(f, "\n", 1);
+
+  const char *treasure = "- Added treasure: ";
+  write(f, treasure, strlen(treasure));
+  write(f, new_treasure.nume, strlen(new_treasure.nume));
+  write(f, "\n", 1);
+
+  close(f);  // done with the log file
+  //__________________________________
+  // Create symbolic link for the log file
+  struct stat link_stat;
+  if (lstat(log_symlink, &link_stat) == -1)
+    {
+      if (errno == ENOENT)
+        {
+          // symlink doesn't exist — safe to create it
+          if (symlink(log_path, log_symlink) == -1)
+            {
+              perror("Error creating symbolic link");
+              exit(EXIT_FAILURE);
+            }
+        }
+      else
+        {
+          perror("Error checking symbolic link");
+          exit(EXIT_FAILURE);
+        }
+    }
+
+  //__________________________________
 }
 
-void process_command(const char *input)
+
+//______________________________________________________________________________________________
+
+
+void list_treasures(const char *id)  // list all the treasures in a certain hunt.
 {
-  if(strcmp(input, "list_treasures") == 0)
+  char path[200], binary_file[200], log_path[200], line[MAX];  // we consider 500 to be the max_letter_number/line in the log file.
+  int f, bin, nr_bytes;
+  bool flag = false;  // were any treasures listed?
+
+  // file paths
+  strcpy(path, id);
+  strcpy(binary_file, path);
+  strcat(binary_file, "/treasure.bin");
+  strcpy(log_path, path);
+  strcat(log_path, "/logged_hunt");
+
+  //____________________________________________________________________
+  // Binary file size:
+  printf("\nBinary file size: %ld\n", get_file_size(binary_file));
+  //____________________________________________________________________
+  // Date last modified:
+
+  struct stat attrib;
+  if (stat(binary_file, &attrib) == -1)
     {
-      if(monitor_pid != -1 && monitor_stopped == 0)
+      perror("stat");
+    }
+  
+  char date[100];
+  strftime(date, sizeof(date), "%d-%m-%Y %H:%M:%S", localtime(&attrib.st_mtime));
+  printf("Last modified: %s\n", date);
+  
+    //____________________________________________________________________
+  // open logs:
+  if((f = open(log_path, O_RDWR | O_APPEND, 0644)) == -1)
+    {
+      perror("Error opening log file");
+      exit(-1);
+    }
+
+  //____________________________________________________________________
+  // open binary_file:
+  if((bin = open(binary_file, O_RDONLY, 0644)) == -1)
+    {
+      perror("Error opening binary file");
+      exit(-1);
+    }
+
+
+  //____________________________________________________________________
+  // navigate through the treasure.bin:
+  int count = 0;
+  char buffer[MAX];
+  int i = 0;
+
+  while((nr_bytes = read(bin, buffer, sizeof(line))) > 0)
+    {
+      for (int j = 0; j < nr_bytes; j++)
         {
-	  execute_list_treasures();
-        }
-      else
-        {
-	  printf("[hub] cannot execute command, no monitor running.\n");
+          if (buffer[j] == '\n')  // end of line
+            {
+              line[i] = '\0';
+              i = 0; // reset for next line
+              flag = true;
+
+              //printf("\n\nLine is: %s:\n\n ", line);
+
+              printf("\nTreasure %d: ", ++count);
+
+              char *token= strtok(line, " ");  // ID
+              printf("ID: %s | ", token);
+              token = strtok(NULL, " ");  // NAME
+              printf("Name: %s | ", token);
+
+              token = strtok(NULL, " ");  // LATITUDE
+              printf("Latitude: %s | ", token);
+
+              token = strtok(NULL, " ");  // LONGITUDE
+              printf("Longitude: %s | ", token);
+
+              token = strtok(NULL, " ");  // CLUE
+              printf("Clue: %s | ", token);
+
+              token = strtok(NULL, "\n");  // VALUE
+              printf("Value: %s\n\n", token);
+
+            }
+            else
+              {
+                if (i < MAX - 1)
+                  {
+                    line[i++] = buffer[j];  // add to line what we have in buffer (char by char)
+                  }
+              }
+
         }
     }
-  else if(strcmp(input, "view_treasure") == 0)
+
+  //____________________________________________________________________
+  // we are going to append the "list treasures" OP.
+  if(flag)  // there has been at least one treasure listed
     {
-      if(monitor_pid != -1 && monitor_stopped == 0)
-        {
-	  execute_view_treasure();
-        }
-      else
-        {
-	  printf("[hub] cannot execute command, no monitor running.\n");
-        }
+      const char *add_text = "Listed the treasures.\n";
+      write(f, add_text, strlen(add_text));
     }
-  else if(strcmp(input, "list_hunts") == 0)
+
+  close(f);
+}
+
+
+//______________________________________________________________________________________________
+
+void view_details(const char *hunt_id, const char *treasure_id)
+{
+  char path[200], binary_file[200], log_path[200], line[MAX];
+  int f, bin, nr_bytes;
+  bool flag = false;  // did we find the desired treasure?
+
+  // file paths
+  strcpy(path, hunt_id);
+  strcpy(binary_file, path);
+  strcat(binary_file, "/treasure.bin");
+  strcpy(log_path, path);
+  strcat(log_path, "/logged_hunt");
+
+  //____________________________________________________________________
+  // open logs:
+  if((f = open(log_path, O_RDWR | O_APPEND, 0644)) == -1)
     {
-      if(monitor_pid != -1 && monitor_stopped == 0)
+      perror("Error opening log file");
+      exit(-1);
+    }
+
+  //____________________________________________________________________
+  // open binary_file:
+  if((bin = open(binary_file, O_RDONLY, 0644)) == -1)
+    {
+      perror("Error opening binary file");
+      exit(-1);
+    }
+
+  //____________________________________________________________________
+  
+  char buffer[MAX];
+  int i = 0;
+  // navigate through treasure.bin:
+  while((nr_bytes = read(bin, buffer, sizeof(line))) > 0)
+    {
+      for (int j = 0; j < nr_bytes; j++)
         {
-	  execute_list_hunts();
+          if (buffer[j] == '\n')  // end of line
+            {
+	      line[i] = '\0';
+              i = 0; // reset for next line (might be needed or might be not)
+
+	      char *token = strtok(line, " ");  // current ID
+	      if(strcmp(token, treasure_id) == 0)  // we found the treasure we are looking for
+		{
+		  flag = true;
+		  printf("ID: %s | ", token);
+		  
+		  token = strtok(NULL, " ");  // NAME
+		  printf("Name: %s | ", token);
+		  
+		  token = strtok(NULL, " ");  // LATITUDE
+		  printf("Latitude: %s | ", token);
+		  
+		  token = strtok(NULL, " ");  // LONGITUDE
+		  printf("Longitude: %s | ", token);
+		  
+		  token = strtok(NULL, " ");  // CLUE
+		  printf("Clue: %s | ", token);
+		  
+		  token = strtok(NULL, "\n");  // VALUE
+		  printf("Value: %s\n\n", token);
+		  break;
+		}
+	      else
+		{
+		  continue;  // keep searching for the treasure
+		}
+	    }
+            else
+              {
+                if (i < MAX - 1)
+                  {
+                    line[i++] = buffer[j];  // add to line what we have in buffer (char by char)
+                  }
+              }
+
         }
-      else
-        {
-	  printf("[hub] cannot execute command, no monitor running.\n");
-        }
+      if(flag)
+	      {
+	        break;  // no need to keep the while going; break
+    	  }
     }
-  else if(strcmp(input, "start_monitor") == 0)
+
+  if(!flag)
     {
-      start_monitor();
-    }
-  else if(strcmp(input, "stop_monitor") == 0)
-    {
-      stop_monitor();
-    }
-  else if(strcmp(input, "exit") == 0)
-    {
-      printf("[hub] Exiting...\n");
-      exit(0);
+      printf("Couldn't find treasure.\n");
     }
   else
     {
-      printf("[hub] Unknown command!\n");
+      const char *add_text = "Viewed a certain treasure.\n";
+      if(write(f, add_text, strlen(add_text)) == -1)
+	{
+	  perror("Error writing in log the view_treasure action");
+	  exit(-1);
+	}
+    }
+
+  close(f);
+}
+
+//______________________________________________________________________________________________
+
+void remove_dir(const char *hunt_name)
+{
+  DIR *dir;
+  struct dirent *entry;
+  char full_path[200];
+
+  // does the directory exist?
+  struct stat st;
+  if(stat(hunt_name, &st) == -1 || !S_ISDIR(st.st_mode))  // S_ISDIR - checks whether it's a dir or not
+    {
+      printf("Error: Hunt directory doesn't exist.\n");
+      exit(-1);
+    }
+
+  if(!(dir = opendir(hunt_name)))
+    {
+      perror("Error: Could not open hunt directory");
+      exit(-1);
+    }
+
+  // create path for symlink:
+  char log_symlink[200];
+  strcpy(log_symlink, "logged_hunt-");
+  strcat(log_symlink, hunt_name);
+
+  // remove symbolic link:
+  if(lstat(log_symlink, &st) == 0 && S_ISLNK(st.st_mode))
+    {
+      if(unlink(log_symlink) != 0)  // unlink "unlinks" the dir before deleting (remove symlink)
+        {
+	  perror("Error removing symbolic link");
+	  exit(-1);
+        }
+    }
+  
+  // remove the content from given dir
+  while((entry = readdir(dir)) != NULL)
+    {
+      if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        continue;
+
+      strcpy(full_path, hunt_name);
+      strcat(full_path, "/");
+      strcat(full_path, entry->d_name);
+
+      if(remove(full_path) != 0)
+        {
+          printf("Couldn't remove a file.\n");
+	  exit(-1);
+        }
+    }
+
+  closedir(dir);
+
+  // remove the given dir
+  if(remove(hunt_name) != 0)
+    {
+      printf("Error removing given dir.\n");
+      exit(-1);
     }
 }
 
-int main(void)
-{
-  print_details();
+//______________________________________________________________________________________________
 
-  // the list_hunts function is implemented in "treasure_manager.c".
-  
-  struct sigaction sa;
-  sa.sa_handler = sigchild_handler;
-  sigemptyset(&sa.sa_mask);
-  sa.sa_flags = SA_RESTART;
-  
-  if(sigaction(SIGCHLD, &sa, NULL) == -1)
+void remove_treasure(const char *hunt, const char *treasure_id)
+{
+  char binary_file[200], log_path[200], temp_file[200];
+  char line[MAX];
+  bool flag = false;  // did we find the treasure we are looking for?
+  int nr_bytes, i = 0, f, bin, temp;
+
+  // create binary_file path:
+  strcpy(binary_file, hunt);
+  strcat(binary_file, "/treasure.bin");
+  // create log path:
+  strcpy(log_path, hunt);
+  strcat(log_path, "/logged_hunt");
+  // create path for the temporary binary file:
+  strcpy(temp_file, hunt);
+  strcat(temp_file, "/temp_treasure.bin");
+
+  //____________________________________________________________________
+  // open logs:
+  if((f = open(log_path, O_RDWR | O_APPEND, 0644)) == -1)
     {
-      perror("Error with sigaction");
+      perror("Error opening log file");
       exit(-1);
     }
-  
-  char input[200];
-  
-  while(1)
+
+  //____________________________________________________________________
+  // open binary_file:
+  if((bin = open(binary_file, O_RDONLY, 0644)) == -1)
     {
-      printf("[hub] > ");
-      fflush(stdout);
-      
-      if(fgets(input, sizeof(input), stdin) == NULL)
-        {
-	  printf("\n");
-	  break;
-        }
-      
-      input[strcspn(input, "\n")] = 0; // remove newline character
-      
-      // Process command:
-      process_command(input);
+      perror("Error opening binary file");
+      exit(-1);
+    }
+
+  //____________________________________________________________________
+
+  
+  if(get_file_size(binary_file) == 0)  // there are no treasures
+    {
+      printf("There are no treasures in binary_file.\n");
+      close(bin);
+      close(f);
+      return;
+    }
+
+  //____________________________________________________________________
+  // open temp file:
+  if((temp = open(temp_file, O_WRONLY | O_CREAT | O_TRUNC, 0644)) == -1)
+    {
+      perror("Couldn't open file temp_treasure.bin");
+      close(f);
+      close(bin);
+      exit(-1);
+    }
+
+  // navigate through binary_file in search for the desired treasure:
+  char buffer[MAX];
+  while((nr_bytes = read(bin, buffer, sizeof(line))) > 0)
+    {
+      for(int j = 0; j < nr_bytes; j++)
+	{
+	  if(buffer[j] == '\n')  // end of line
+	    {
+	      line[i] = '\0';
+	      i = 0;  // reset for next line
+	      char temp_line[500];
+	      strcpy(temp_line, line);
+	      char *token = strtok(line, " ");  // get the current id
+	      if(strcmp(token, treasure_id) != 0)  // while we DON'T find the treasure, just copy the other treasures in the temp binary file:
+		{
+		  if(write(temp, token, strlen(token)) == -1)
+		    {
+		      perror("Error writing in temp_file");
+		      exit(-1);
+		    }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		
+		  token = strtok(NULL, " ");  // NAME
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		  
+		  token = strtok(NULL, " ");  // LATITUDE
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		  
+		  token = strtok(NULL, " ");  // LONGITUDE
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		  
+		  token = strtok(NULL, " ");  // CLUE
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+		  if(write(temp, " ", 1) == -1)  // we need to add a space for visibility, don't we?
+		    {
+		      perror("Couldn't write space in temp");
+		      exit(-1);
+		    }
+		  
+		  token = strtok(NULL, "\n");  // VALUE
+		  if(write(temp, token, strlen(token)) == -1)
+		  {
+		    perror("Error writing in temp_file");
+		    exit(-1);
+		  }
+
+		  if(write(temp, "\n", 1) == -1)
+		    {
+		      perror("Couldn't write backslash n in temop_file");
+		      exit(-1);
+		    }
+		}
+	      else  // found the treasure we want to remove
+		{
+		  flag = true;
+		}
+	    }
+	  else
+	    {
+	      line[i++] = buffer[j];
+	    }
+	}
+    }
+
+  // close files:
+  close(bin);
+  close(temp);
+  
+  if(!flag)
+    {
+      printf("The treasure with ID %s not found in %s.\n", treasure_id, hunt);
+      unlink(temp_file);  // remove
+      return;
+    }
+
+  if(remove(binary_file) != 0)
+    {
+      perror("Couldn't remove binary_file in remove_treasure function");
+      exit(-1);
+    }
+
+  if(rename(temp_file, binary_file) != 0)  // rename temp file (this will become the original one)
+    {
+      perror("Couldn't name temp file like  original");
+      exit(-1);
+    }
+
+  if(get_file_size(binary_file) == 0)  // we just removed the last treasure
+    {
+      remove_dir(hunt);
+    }
+  else  // append to log the action:
+    {
+      char add_text[500];
+      strcpy(add_text, "Removed treasure with ID ");
+      strcat(add_text, treasure_id);
+      strcat(add_text, "\n");
+
+      if(write(f, add_text, strlen(add_text)) == -1)
+	{
+	  perror("Couldn't write into log file the remove_treasure action");
+	  close(f);
+	  exit(-1);
+	}
+    }
+  close(f);
+}
+
+//______________________________________________________________________________________________
+
+// list all the hunts in the current dir:
+void list_hunts(void)
+{
+  // number of dirs in current dir = number of hunts
+  // get number of treasures + print the name for each:
+  DIR *dir = opendir(".");
+  if(!dir)
+    {
+      perror("Couldn't open directory");
+      exit(-1);
+    }
+
+  struct dirent *entry;
+  bool flag = false;  // did we find any hunts?
+  int treasure_count = 0;  // number of treasures in each hunt
+
+  // search for hunts:
+  while((entry = readdir(dir)))
+    {
+      struct stat st;
+      if(stat(entry->d_name, &st) == -1)
+	{
+	  perror("Error - stat function");
+	  continue;
+	}
+
+      // found a directory
+      if(S_ISDIR(st.st_mode))
+	{
+	  // check that the directory is NOT ".", ".." or ".git". if it is, then skip:
+	  if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, ".git") == 0)
+	    {
+	      continue;
+	    }
+
+	  // found a hunt
+	  flag = true;
+	  printf("\n%s", entry->d_name);
+
+	  // count the treasures in the current hunt (a hunt has at least one treasure):
+
+	  // open binary file in the current hunt directory:
+	  char binary_file[200];
+	  int bin;
+	  // create binary file path:
+	  strcpy(binary_file, entry->d_name);
+	  strcat(binary_file, "/treasure.bin");
+	  
+	  if((bin = open(binary_file, O_RDONLY, 0644)) == -1)
+	    {
+	      perror("Error opening binary file");
+	      exit(-1);
+	    }
+	  
+	  char line[MAX], buffer[MAX];
+	  int nr_bytes;
+	  while((nr_bytes = read(bin, buffer, sizeof(line))) > 0)
+	    {
+	      for(int j = 0; j < nr_bytes; j++)
+		{
+		  if(buffer[j] == '\n')
+		    {
+		      treasure_count++;
+		    }
+		  else
+		    {
+		      continue;
+		    }
+		}
+	    }
+	  if(treasure_count == 1)
+	    {
+	      printf(" - one hunt\n\n");
+	    }
+	  else
+	    {
+	      printf(" - %d hunts\n\n", treasure_count);
+	    }
+	  close(bin);
+	  // prepare treasure_count for the next count:
+	  treasure_count = 0;
+	}
+    }
+  closedir(dir);
+  
+  if(!flag)
+    {
+      printf("There are no hunts.\n");
+    }
+}
+//______________________________________________________________________________________________
+
+int main(int argc, char **argv)
+{
+  // ARGV : exe | OP | huntName | treasureID (optional)
+  // IF there are more argc than needed, the code will run using only the ones it needs.
+  if(argc < 2)
+    {
+      printf("Argc should be 2, 3 or 4, depending on the desired function.\n");
+      printf("add - 3 | list - 3 | view - 4 | remove_treasure - 4 | remove_hunt - 3 | list_hunts - 2\n");
+      exit(-1);
+    }
+
+  if(strcmp(argv[1], "--add") == 0)  // argc = 3
+    {
+      if(argc > 2)
+	{
+	  add_hunt(argv[2]);
+	}
+      else
+	{
+	  printf("This function requires argc = 3.\n");
+	}
+    }
+  else if(strcmp(argv[1], "--list") == 0)  // argc = 3
+    {
+      if(argc >2)
+	{
+	  list_treasures(argv[2]);
+	}
+      else
+	{
+	  printf("This function requires argc = 3.\n");
+	}
+    }
+  else if(strcmp(argv[1], "--view") == 0)  // argc = 4
+    {
+      if(argc > 3)
+	view_details(argv[2], argv[3]);
+      else
+	{
+	  printf("This function requires argc = 4.\n");
+	  exit(-1);
+	}
+    }
+  else if(strcmp(argv[1], "--remove_hunt") == 0)  // argc = 3
+    {
+      if(argc > 2)
+	{
+	  remove_dir(argv[2]);
+	}
+      else
+	{
+	  printf("This function requires argc = 3.\n");
+	}
+    }
+  else if(strcmp(argv[1], "--remove_treasure") == 0)  // argc = 4
+    {
+      if(argc > 3)
+	{
+	  remove_treasure(argv[2], argv[3]);
+	}
+      else
+	{
+	  printf("This function requires argc = 4.\n");
+	}
+    }
+  else if(strcmp(argv[1], "--list_hunts") == 0)
+    {
+      if(argc > 1)
+	{
+	  list_hunts();
+	}
+      else
+	{
+	  printf("This function requires argc = 2.\n");
+	}
+    }
+  else
+    {
+      printf("The requested function is unknown.\n");
     }
   
   return 0;
