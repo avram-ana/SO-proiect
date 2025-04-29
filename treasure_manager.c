@@ -670,7 +670,7 @@ void remove_treasure(const char *hunt, const char *treasure_id)
 void list_hunts(void)
 {
   // number of dirs in current dir = number of hunts
-  // get number of hunts + print the name for each:
+  // get number of treasures + print the name for each:
   DIR *dir = opendir(".");
   if(!dir)
     {
@@ -679,7 +679,8 @@ void list_hunts(void)
     }
 
   struct dirent *entry;
-  int count = 0;
+  bool flag = false;  // did we find any hunts?
+  int treasure_count = 0;  // number of treasures in each hunt
 
   // search for hunts:
   while((entry = readdir(dir)))
@@ -691,28 +692,70 @@ void list_hunts(void)
 	  continue;
 	}
 
-      // found a directory
+      // check if it is a directory
       if(S_ISDIR(st.st_mode))
 	{
-	  // check that the directory is NOT ".", ".." or ".git". if it is, then skip:
-	  if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, ".git") == 0)
+	  // check that the directory is NOT "." or "..". if it is, then skip:
+	  if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
 	    {
 	      continue;
 	    }
-	  	  
+
+	  // found a directory, but is it a hunt?
+	  
+	  // count the treasures in the current hunt (a hunt has at least one treasure):
+
+	  // open binary file in the current hunt directory:
+	  char binary_file[200];
+	  int bin;
+	  // create binary file path:
+	  strcpy(binary_file, entry->d_name);
+	  strcat(binary_file, "/treasure.bin");
+
+	  // does "treasure.bin" exist in the dir?
+	  if((bin = open(binary_file, O_RDONLY, 0644)) == -1)
+	    {
+	      continue;
+	    }
+
+	  // the directory is definitely a hunt, it has treasure.bin
+	  flag = true;
 	  printf("\n%s", entry->d_name);
-	  count++;
+	  
+	  char line[MAX], buffer[MAX];
+	  int nr_bytes;
+	  while((nr_bytes = read(bin, buffer, sizeof(line))) > 0)
+	    {
+	      for(int j = 0; j < nr_bytes; j++)
+		{
+		  if(buffer[j] == '\n')
+		    {
+		      treasure_count++;
+		    }
+		  else
+		    {
+		      continue;
+		    }
+		}
+	    }
+	  if(treasure_count == 1)
+	    {
+	      printf(" - one treasure\n\n");
+	    }
+	  else
+	    {
+	      printf(" - %d treasures\n\n", treasure_count);
+	    }
+	  close(bin);
+	  // prepare treasure_count for the next count:
+	  treasure_count = 0;
 	}
     }
   closedir(dir);
   
-  if(count == 0)
+  if(!flag)
     {
       printf("There are no hunts.\n");
-    }
-  else
-    {
-      printf("\nTotal number of hunts: %d\n", count);
     }
 }
 //______________________________________________________________________________________________
